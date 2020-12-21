@@ -16,7 +16,7 @@ defmodule Exldap do
   @spec connect(timeout()) :: connect_result()
   def connect(timeout \\ 3000) do
     want =  Application.get_env(:exldap, :settings)
-              |> Keyword.take([:server, :port, :ssl, :sslopts, :user_dn, :password])
+              |> Keyword.take([:server, :port, :ssl, :sslopts, :tcpopts, :user_dn, :password])
 
     connect(want, timeout)
   end
@@ -39,9 +39,10 @@ defmodule Exldap do
     port = Keyword.fetch!(args, :port)
     ssl = Keyword.get(args, :ssl, false)
     sslopts = Keyword.get(args, :sslopts, [])
+    tcpopts = Keyword.get(args, :tcpopts, [])
     user_dn = Keyword.fetch!(args, :user_dn)
     password = Keyword.fetch!(args, :password)
-    connect(server, port, ssl, user_dn, password, timeout, sslopts)
+    connect(server, port, ssl, user_dn, password, timeout, sslopts, tcpopts)
   end
 
   @doc ~S"""
@@ -55,9 +56,9 @@ defmodule Exldap do
   {:error, error_description}
 
   """
-  @spec connect(server :: String.t(), port :: pos_integer(), ssl :: boolean(), user_dn :: String.t(), password :: String.t(), timeout :: timeout(), sslopts :: keyword()) :: connect_result()
-  def connect(server, port, ssl, user_dn, password, timeout \\ :infinity, sslopts \\ []) when is_list(sslopts) do
-    case open(server, port, ssl, timeout, sslopts) do
+  @spec connect(server :: String.t(), port :: pos_integer(), ssl :: boolean(), user_dn :: String.t(), password :: String.t(), timeout :: timeout(), sslopts :: keyword(), tcpopts :: keyword()) :: connect_result()
+  def connect(server, port, ssl, user_dn, password, timeout \\ :infinity, sslopts \\ [], tcpopts \\ []) when is_list(sslopts) when is_list(tcpopts) do
+    case open(server, port, ssl, timeout, sslopts, tcpopts) do
       {:ok, connection} ->
         case verify_credentials(connection, user_dn, password) do
           :ok -> {:ok, connection}
@@ -85,7 +86,8 @@ defmodule Exldap do
     port = settings |> Keyword.get(:port)
     ssl = settings |> Keyword.get(:ssl)
     sslopts = settings |> Keyword.get(:sslopts, [])
-    open(server, port, ssl, timeout, sslopts)
+    tcpopts = settings |> Keyword.get(:tcpopts, [])
+    open(server, port, ssl, timeout, sslopts, tcpopts)
   end
 
   @doc ~S"""
@@ -93,28 +95,20 @@ defmodule Exldap do
 
   ## Example
 
-      iex> Exldap.open("SERVERADDRESS", 636, true, timeout \\ :infinity, sslopts \\ [])
+      iex> Exldap.open("SERVERADDRESS", 636, true, timeout \\ :infinity, sslopts \\ [], tcpopts \\ [])
       {:ok, connection}
       Or
       {:error, error_description}
 
   """
-  def open(server, port, ssl, timeout \\ :infinity, sslopts \\ [])
-
-  def open(server, port, false, :infinity, _) do
-    :eldap.open([to_charlist(server)], [{:port, port}, {:ssl, false}])
-  end
-
-  def open(server, port, false, timeout, _) do
-    :eldap.open([to_charlist(server)], [{:port, port}, {:ssl, false}, {:timeout, timeout}])
-  end
-
-  def open(server, port, ssl, :infinity, sslopts) do
-    :eldap.open([to_charlist(server)], [{:port, port}, {:ssl, ssl}, {:sslopts, sslopts}])
-  end
-
-  def open(server, port, ssl, timeout, sslopts) do
-    :eldap.open([to_charlist(server)], [{:port, port}, {:ssl, ssl}, {:sslopts, sslopts}, {:timeout, timeout}])
+  def open(server, port, ssl, timeout \\ :infinity, sslopts \\ [], tcpopts \\ []) do
+    :eldap.open([to_charlist(server)], [
+      {:port, port},
+      {:ssl, ssl},
+      {:sslopts, sslopts},
+      {:timeout, timeout},
+      {:tcpopts, tcpopts}
+    ])
   end
 
   @doc ~S"""
